@@ -13,6 +13,8 @@ use microbit::{
         gpio::Level,
     },
 };
+// Bart's HSV to RGB conversion library, which we use to generate the RGB values for the LEDs.
+use hsv::{Hsv, Rgb};
 
 /// Number of refresh cycles to stay on a given brightness.
 const CYCLES_PER_BRIGHTNESS: usize = 4;

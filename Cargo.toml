@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 cortex-m-rt = "0.7"
 embedded-hal = "1.0.0"
+hsv = "0.1.1"
 microbit-v2 = "0.16.0"
 panic-rtt-target = "0.2.0"
 rtt-target = "0.6"

@@ -1,5 +1,7 @@
 {
     "chat.tools.terminal.autoApprove": {
-        "true": true
+        "true": true,
+        "cargo check": true,
+        "command": true
     }
 }

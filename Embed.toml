@@ -1,11 +1,15 @@
 [default.general]
 chip = "nrf52833_xxAA"
 
+[default.probe]
+protocol = "Swd"
+speed = 1000
+
 [default.reset]
 halt_afterwards = false
 
 [default.rtt]
-enabled = true
+enabled = false
 
 [default.gdb]
 enabled = false

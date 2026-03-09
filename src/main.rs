@@ -2,11 +2,15 @@
 #![no_std]
 
 mod button;
+mod component;
+mod hsv_control;
 mod rgb_display;
 
 use core::cell::RefCell;
 
 use button::Button;
+use component::Component;
+use hsv_control::apply_selected_component;
 use rgb_display::RgbDisplay;
 
 use cortex_m::{interrupt::Mutex, peripheral::NVIC};
@@ -26,7 +30,8 @@ use microbit::{
     Board,
 };
 
-const HUE_MAX_DEGREES: f32 = 300.0;
+const KNOB_SMOOTHING_ALPHA: f32 = 0.2;
+const DISPLAY_SHOW_MS: u32 = 20;
 
 static RGB_DISPLAY: Mutex<RefCell<Option<RgbDisplay>>> = Mutex::new(RefCell::new(None));
 
@@ -54,11 +59,12 @@ fn main() -> ! {
     let mut rgb_display = RgbDisplay::new(rgb_pins, timer0);
 
     let mut hsv = Hsv {
-        h: 0.0,
-        s: 1.0,
+        h: 0.8,
+        s: 0.2,
         v: 0.5,
     };
     let mut component = Component::H;
+    let mut knob_smoothed = read_knob_sample_0_1(&mut adc, &mut pot).1;
 
     rgb_display.set(&hsv);
     rgb_display.step();
@@ -79,12 +85,10 @@ fn main() -> ! {
             component = component.next();
         }
 
-        let knob = read_knob_0_1(&mut adc, &mut pot);
-        match component {
-            Component::H => hsv.h = knob * HUE_MAX_DEGREES,
-            Component::S => hsv.s = knob,
-            Component::V => hsv.v = knob,
-        }
+        let (_, knob_raw) = read_knob_sample_0_1(&mut adc, &mut pot);
+        knob_smoothed += (knob_raw - knob_smoothed) * KNOB_SMOOTHING_ALPHA;
+        let knob = knob_smoothed;
+        apply_selected_component(&mut hsv, component, knob);
 
         cortex_m::interrupt::free(|cs| {
             if let Some(rgb_display) = RGB_DISPLAY.borrow(cs).borrow_mut().as_mut() {
@@ -92,7 +96,12 @@ fn main() -> ! {
             }
         });
 
-        display.show(&mut display_timer, component.letter(), 100);
+        // Keep UI display responsive by avoiding long blocking intervals.
+        display.show(
+            &mut display_timer,
+            component_letter(component),
+            DISPLAY_SHOW_MS,
+        );
     }
 }
 
@@ -105,7 +114,7 @@ fn TIMER0() {
     });
 }
 
-fn read_knob_0_1<P>(adc: &mut Saadc, pin: &mut P) -> f32
+fn read_knob_sample_0_1<P>(adc: &mut Saadc, pin: &mut P) -> (i32, f32)
 where
     P: Channel,
 {
@@ -117,56 +126,32 @@ where
     let lo = ADC_MIN + DEAD_ZONE;
     let hi = ADC_MAX - DEAD_ZONE;
     let clamped = raw.clamp(lo, hi);
-    (clamped - lo) as f32 / (hi - lo) as f32
+    let normalized = (clamped - lo) as f32 / (hi - lo) as f32;
+    (raw, normalized)
 }
 
-#[derive(Clone, Copy)]
-enum Component {
-    H,
-    S,
-    V,
-}
-
-impl Component {
-    fn prev(self) -> Self {
-        match self {
-            Self::H => Self::V,
-            Self::S => Self::H,
-            Self::V => Self::S,
-        }
-    }
-
-    fn next(self) -> Self {
-        match self {
-            Self::H => Self::S,
-            Self::S => Self::V,
-            Self::V => Self::H,
-        }
-    }
-
-    fn letter(self) -> [[u8; 5]; 5] {
-        match self {
-            Self::H => [
-                [0, 1, 0, 1, 0],
-                [0, 1, 0, 1, 0],
-                [0, 1, 1, 1, 0],
-                [0, 1, 0, 1, 0],
-                [0, 1, 0, 1, 0],
-            ],
-            Self::S => [
-                [0, 1, 1, 1, 0],
-                [1, 0, 0, 0, 0],
-                [0, 1, 1, 1, 0],
-                [0, 0, 0, 1, 0],
-                [1, 1, 1, 0, 0],
-            ],
-            Self::V => [
-                [1, 0, 0, 0, 1],
-                [1, 0, 0, 0, 1],
-                [0, 1, 0, 1, 0],
-                [0, 1, 0, 1, 0],
-                [0, 0, 1, 0, 0],
-            ],
-        }
+fn component_letter(component: Component) -> [[u8; 5]; 5] {
+    match component {
+        Component::H => [
+            [0, 1, 0, 1, 0],
+            [0, 1, 0, 1, 0],
+            [0, 1, 1, 1, 0],
+            [0, 1, 0, 1, 0],
+            [0, 1, 0, 1, 0],
+        ],
+        Component::S => [
+            [0, 1, 1, 1, 0],
+            [1, 0, 0, 0, 0],
+            [0, 1, 1, 1, 0],
+            [0, 0, 0, 1, 0],
+            [1, 1, 1, 0, 0],
+        ],
+        Component::V => [
+            [1, 0, 0, 0, 1],
+            [1, 0, 0, 0, 1],
+            [0, 1, 0, 1, 0],
+            [0, 1, 0, 1, 0],
+            [0, 0, 1, 0, 0],
+        ],
     }
 }

@@ -7,7 +7,7 @@ use microbit::hal::{
 
 pub const FRAME_STEPS: u32 = 100;
 pub const STEP_US: u32 = 100;
-pub const MAX_DUTY_STEPS: u32 = 50;
+const MAX_DUTY_STEPS: u32 = 50;
 const LED_ACTIVE_LOW: bool = true;
 
 pub struct RgbDisplay {
@@ -42,31 +42,12 @@ impl RgbDisplay {
     pub fn step(&mut self) {
         self.timer0.reset_event();
         if self.tick == 0 {
-            if let Some(schedule) = self.next_schedule.take() {
-                self.schedule = schedule;
-            }
-            for (pin, off_tick) in self.rgb_pins.iter_mut().zip(self.schedule.iter()) {
-                if *off_tick > 0 {
-                    set_led(pin, true);
-                } else {
-                    set_led(pin, false);
-                }
-            }
+            self.begin_frame();
         } else {
-            for (pin, off_tick) in self.rgb_pins.iter_mut().zip(self.schedule.iter()) {
-                if *off_tick == self.tick {
-                    set_led(pin, false);
-                }
-            }
+            self.apply_turnoffs_for_tick();
         }
 
-        let next_tick = self
-            .schedule
-            .iter()
-            .copied()
-            .filter(|off_tick| *off_tick > self.tick)
-            .min()
-            .unwrap_or(FRAME_STEPS);
+        let next_tick = self.next_transition_tick();
 
         let delay_us = (next_tick - self.tick).max(1) * STEP_US;
         self.tick = if next_tick >= FRAME_STEPS {
@@ -75,6 +56,35 @@ impl RgbDisplay {
             next_tick
         };
         self.timer0.start(delay_us);
+    }
+
+    fn begin_frame(&mut self) {
+        if let Some(schedule) = self.next_schedule.take() {
+            self.schedule = schedule;
+        }
+
+        // Start of frame: each channel is on unless it should turn off at tick 0.
+        for (pin, off_tick) in self.rgb_pins.iter_mut().zip(self.schedule.iter()) {
+            set_led(pin, *off_tick > 0);
+        }
+    }
+
+    fn apply_turnoffs_for_tick(&mut self) {
+        // On each transition interrupt, turn off any channels scheduled for this tick.
+        for (pin, off_tick) in self.rgb_pins.iter_mut().zip(self.schedule.iter()) {
+            if *off_tick == self.tick {
+                set_led(pin, false);
+            }
+        }
+    }
+
+    fn next_transition_tick(&self) -> u32 {
+        self.schedule
+            .iter()
+            .copied()
+            .filter(|off_tick| *off_tick > self.tick)
+            .min()
+            .unwrap_or(FRAME_STEPS)
     }
 }
 

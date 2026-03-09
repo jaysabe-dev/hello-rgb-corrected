@@ -35,4 +35,4 @@ This work is made available under the MIT License. Please see the file `LICENSE.
 
 ## Acknowledgements
 
-Thanks to Bart Massey for the assignment design and project guidance, and to the course staff and classmates for troubleshooting tips on hardware setup and timing behavior.
+Thanks to Bart Massey for the design and project guidance. Also to my peers for troubleshooting tips on hardware setup and timing behavior.
